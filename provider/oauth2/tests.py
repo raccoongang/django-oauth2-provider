@@ -242,10 +242,11 @@ class AuthorizationTest(BaseOAuth2TestCase):
     def test_authorization_requires_a_valid_redirect_uri(self, response_type):
         self.login()
 
+        redirect_uris = self.get_client().redirect_uris
         self.client.get(
             self.auth_url(),
             data=self.get_auth_params(
-                response_type=response_type, redirect_uri=self.get_client().redirect_uri + '-invalid'
+                response_type=response_type, redirect_uri=redirect_uris[0] + '-invalid'
             )
         )
         response = self.client.get(self.auth_url2())
@@ -254,7 +255,7 @@ class AuthorizationTest(BaseOAuth2TestCase):
         self.assertTrue(escape(u"The requested redirect didn't match the client settings.") in response.content)
 
         self.client.get(self.auth_url(), data=self.get_auth_params(
-            response_type=response_type, redirect_uri=self.get_client().redirect_uri))
+            response_type=response_type, redirect_uri=redirect_uris[0]))
         response = self.client.get(self.auth_url2())
 
         self.assertEqual(200, response.status_code)
