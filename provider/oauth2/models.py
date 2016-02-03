@@ -4,6 +4,7 @@ implement these models with fields and and methods to be compatible with the
 views in :attr:`provider.views`.
 """
 
+import re
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -33,6 +34,7 @@ class Client(models.Model):
 
     Clients are outlined in the :rfc:`2` and its subsections.
     """
+    REDIRECT_URI_SPLIT_RE = re.compile(',|\n|\s')
 
     class Meta:
         # In Django 1.7, this is required so that Django recognizes
@@ -43,7 +45,7 @@ class Client(models.Model):
     user = models.ForeignKey(AUTH_USER_MODEL, related_name='oauth2_client', blank=True, null=True)
     name = models.CharField(max_length=255, blank=True)
     url = models.URLField(help_text="Your application's URL.")
-    redirect_uri = models.URLField(help_text="Your application's callback URL")
+    redirect_uri = models.TextField(help_text="Your application's callback URLs in a comma, space or new line delimited list.")
     client_id = models.CharField(max_length=255, default=short_token)
     client_secret = models.CharField(max_length=255, default=long_token)
     client_type = models.IntegerField(choices=CLIENT_TYPES)
@@ -51,6 +53,10 @@ class Client(models.Model):
 
     def __unicode__(self):
         return self.redirect_uri
+
+    @property
+    def redirect_uris(self):
+        return self.REDIRECT_URI_SPLIT_RE.split(self.redirect_uri)
 
     def get_default_token_expiry(self):
         public = (self.client_type == 1)

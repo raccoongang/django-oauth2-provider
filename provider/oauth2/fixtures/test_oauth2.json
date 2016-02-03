@@ -13,16 +13,16 @@
     }, 
     {
         "fields": {
-            "redirect_uri": "http://example.com/application/2/", 
+            "redirect_uri": "http://example.com/application/2/,http://example.com/application/3/",
             "client_id": "71fbc29950ac1b386a12", 
             "client_secret": "1944b695ca0cbf4f419a7d5c7e4fed13a660bc04", 
             "client_type": 0, 
-            "url": "http://example.com/", 
+            "url": "http://example.com/",
             "user": 2
         }, 
         "model": "oauth2.client", 
         "pk": 2
-    }, 
+    },
     {
         "fields": {
             "date_joined": "2012-01-23 05:44:17", 
