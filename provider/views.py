@@ -82,7 +82,7 @@ class AccessTokenMixin(object):
         """
         raise NotImplementedError  # pragma: no cover
 
-    def access_token_response_data(self, access_token, response_type=None):
+    def access_token_response_data(self, access_token, response_type=None, nonce=''):
         """
         Returns access token data as defined in :rfc:`5.1`.
 
@@ -104,6 +104,25 @@ class AccessTokenMixin(object):
             pass
 
         return response_data
+
+    def get_access_and_refresh_tokens(self, request, user, scope, client, reuse_existing_access_token=False, create_refresh_token=True):
+        """
+        Returns an AccessToken and RefreshToken for the given user, scope, and client combination.
+
+        Returns:
+            (AccessToken, RefreshToken)
+            If create_refresh_token is False, the second element of the tuple will be None.
+        """
+        if reuse_existing_access_token:
+            at = self.get_access_token(request, user, scope, client)
+        else:
+            at = self.create_access_token(request, user, scope, client)
+
+        rt = None
+        if create_refresh_token and not reuse_existing_access_token:
+            rt = self.create_refresh_token(request, user, scope, at, client)
+
+        return at, rt
 
 
 class OAuthView(TemplateView):
@@ -333,15 +352,14 @@ class Authorize(OAuthView, Mixin, AccessTokenMixin):
         data = self.get_data(request)
 
         lookup_kwargs = {
-            "user": request.user,
-            "client": client,
-            "scope": scope.to_int(*data.get('scope', constants.SCOPES[0][1]).split())
+            'user': request.user,
+            'client': client,
+            'scope': scope.to_int(*data.get('scope', constants.SCOPES[0][1]).split()),
+            'reuse_existing_access_token': constants.SINGLE_ACCESS_TOKEN,
+            'create_refresh_token': False
         }
 
-        if constants.SINGLE_ACCESS_TOKEN:
-            token = self.get_access_token(request, **lookup_kwargs)
-        else:
-            token = self.create_access_token(request, **lookup_kwargs)
+        token, __ = self.get_access_and_refresh_tokens(request, **lookup_kwargs)
 
         response_data = self.access_token_response_data(token, data['response_type'])
 
@@ -503,7 +521,7 @@ class AccessToken(OAuthView, Mixin, AccessTokenMixin):
     Authentication backends used to authenticate a particular client.
     """
 
-    grant_types = ['authorization_code', 'refresh_token', 'password']
+    grant_types = ['authorization_code', 'refresh_token', 'password', 'client_credentials']
     """
     The default grant types supported by this view.
     """
@@ -532,6 +550,14 @@ class AccessToken(OAuthView, Mixin, AccessTokenMixin):
         """
         raise NotImplementedError  # pragma: no cover
 
+    def get_client_credentials_grant(self, request, data, client):
+        """
+        Return the optional parameters (scope) associated with this request.
+
+        :return: ``tuple`` - ``(True or False, options)``
+        """
+        raise NotImplementedError  # pragma: no cover
+
     def invalidate_grant(self, grant):
         """
         Override to handle grant invalidation. A grant is invalidated right
@@ -549,12 +575,12 @@ class AccessToken(OAuthView, Mixin, AccessTokenMixin):
         kwargs.setdefault('content_type', 'application/json')
         return HttpResponse(json.dumps(error), status=status, **kwargs)
 
-    def access_token_response(self, access_token, data=None):
+    def access_token_response(self, access_token, nonce=''):
         """
         Returns a successful response after creating the access token
         as defined in :rfc:`5.1`.
         """
-        response_data = self.access_token_response_data(access_token)
+        response_data = self.access_token_response_data(access_token, nonce=nonce)
         return HttpResponse(
             json.dumps(response_data), content_type='application/json'
         )
@@ -564,17 +590,21 @@ class AccessToken(OAuthView, Mixin, AccessTokenMixin):
         Handle ``grant_type=authorization_code`` requests as defined in
         :rfc:`4.1.3`.
         """
-        grant = self.get_authorization_code_grant(request, request.POST,
-                                                  client)
-        if constants.SINGLE_ACCESS_TOKEN:
-            at = self.get_access_token(request, grant.user, grant.scope, client)
-        else:
-            at = self.create_access_token(request, grant.user, grant.scope, client)
-            rt = self.create_refresh_token(request, grant.user, grant.scope, at, client)
+        grant = self.get_authorization_code_grant(request, request.POST, client)
+
+        kwargs = {
+            'request': request,
+            'user': grant.user,
+            'scope': grant.scope,
+            'client': client,
+            'reuse_existing_access_token': constants.SINGLE_ACCESS_TOKEN,
+        }
+        at, rt = self.get_access_and_refresh_tokens(**kwargs)
 
         self.invalidate_grant(grant)
 
-        return self.access_token_response(at)
+        nonce = grant.nonce
+        return self.access_token_response(at, nonce)
 
     def refresh_token(self, request, data, client):
         """
@@ -586,8 +616,13 @@ class AccessToken(OAuthView, Mixin, AccessTokenMixin):
         self.invalidate_refresh_token(rt)
         self.invalidate_access_token(rt.access_token)
 
-        at = self.create_access_token(request, rt.user, rt.access_token.scope, client)
-        rt = self.create_refresh_token(request, at.user, at.scope, at, client)
+        kwargs = {
+            'request': request,
+            'user': rt.user,
+            'scope': rt.access_token.scope,
+            'client': client,
+        }
+        at, rt = self.get_access_and_refresh_tokens(**kwargs)
 
         return self.access_token_response(at)
 
@@ -597,16 +632,32 @@ class AccessToken(OAuthView, Mixin, AccessTokenMixin):
         """
 
         data = self.get_password_grant(request, data, client)
-        user = data.get('user')
-        scope = data.get('scope')
+        kwargs = {
+            'request': request,
+            'user': data.get('user'),
+            'scope': data.get('scope'),
+            'client': client,
+            'reuse_existing_access_token': constants.SINGLE_ACCESS_TOKEN,
 
-        if constants.SINGLE_ACCESS_TOKEN:
-            at = self.get_access_token(request, user, scope, client)
-        else:
-            at = self.create_access_token(request, user, scope, client)
             # Public clients don't get refresh tokens
-            if client.client_type != 1:
-                rt = self.create_refresh_token(request, user, scope, at, client)
+            'create_refresh_token': client.client_type == constants.CONFIDENTIAL
+        }
+        at, rt = self.get_access_and_refresh_tokens(**kwargs)
+
+        return self.access_token_response(at)
+
+    def client_credentials(self, request, data, client):
+        """ Handle ``grant_type=client_credentials`` requests as defined in :rfc:`4.4`. """
+        data = self.get_client_credentials_grant(request, data, client)
+        kwargs = {
+            'request': request,
+            'user': client.user,
+            'scope': data.get('scope'),
+            'client': client,
+            'reuse_existing_access_token': constants.SINGLE_ACCESS_TOKEN,
+            'create_refresh_token': False,
+        }
+        at, rt = self.get_access_and_refresh_tokens(**kwargs)
 
         return self.access_token_response(at)
 
@@ -622,6 +673,8 @@ class AccessToken(OAuthView, Mixin, AccessTokenMixin):
             return self.refresh_token
         elif grant_type == 'password':
             return self.password
+        elif grant_type == 'client_credentials':
+            return self.client_credentials
         return None
 
     def get(self, request):

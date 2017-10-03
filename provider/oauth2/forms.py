@@ -138,6 +138,9 @@ class AuthorizationRequestForm(ScopeMixin, OAuthForm):
     The scope that the authorization should include.
     """
 
+    # Nonce passed back to OpenID Connect ID tokens to avoid replay attacks
+    nonce = forms.CharField(required=False)
+
     def clean_response_type(self):
         """
         :rfc:`3.1.1` Lists of values are space delimited.
@@ -182,6 +185,7 @@ class AuthorizationForm(ScopeMixin, OAuthForm):
     """
     authorize = forms.BooleanField(required=False)
     scope = ScopeChoiceField(choices=SCOPE_NAMES, required=False)
+    nonce = forms.CharField(required=False)
 
     def save(self, **kwargs):
         authorize = self.cleaned_data.get('authorize')
@@ -191,6 +195,7 @@ class AuthorizationForm(ScopeMixin, OAuthForm):
 
         grant = Grant()
         grant.scope = self.cleaned_data.get('scope')
+        grant.nonce = self.cleaned_data.get('nonce')
         return grant
 
 
@@ -336,3 +341,19 @@ class PublicPasswordGrantForm(PasswordGrantForm):
 
         data['client'] = client
         return data
+
+
+class ClientCredentialsGrantForm(ScopeMixin, OAuthForm):
+    """ Validate a client credentials grant request. """
+    scope = forms.CharField(required=False)
+
+    def clean_scope(self):
+        # NOTE (CCB): This is a horrible hack, like much of our OAuth work. The scopes are declared in
+        # edx-oauth2-provider. (See edx_oauth2_provider/constants.py.) However, we need to provide a default scope
+        # that (a) gives the token basic read access and (b) allows access to the user info endpoint. This value
+        # represents the following scopes: openid (1), profile (2), email (4), permissions (32). At present, this is
+        # all scopes except course_staff and course_instructor. These scopes are normally associated with actual
+        # users, whereas the client credentials grant will primarily be used by service users.
+        #
+        # In the future, we should limit the allowable scopes either at a global or per-client level.
+        return 39

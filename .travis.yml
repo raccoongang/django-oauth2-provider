@@ -10,11 +10,10 @@ addons:
 
 install:
   - pip install -U pip wheel codecov
-  - pip install -r requirements.txt
-  - python setup.py develop
+  - make test_requirements
 
 script:
-  - ./test.sh
+  - tox
 
 after_success:
   - codecov
@@ -23,7 +22,7 @@ deploy:
   provider: pypi
   user: edx
   password:
-    secure: LQX5TSthhGHnFivDc67/O5PNFyrxH3Ch5u9sJmBtjHE2q0HHBk4JP7m7WYbTUiKJlFMR+Q6TdXRp7f64PdGKfEi3teeTUCHUkgkRzBwF832MHqCRmA/FmD0U9pmTrV7iIaid+GbFE4pnfeKvtQievZfJxAm9y7ExT3bcztNYlSQ=
+    secure: vIuWvQ5MgvA4fWAugRTTDbRqFQlKwtt2VEVK6XJNPDwtqq956TJ1qll6jtECv90hBO/dXpbj+151P2fgWD5d6OuHagD4lXaZ9sBziClBXbaowjeGH6xG3xScvo7+oJ+2vVh/xNk4Pqv2YdbOBTbP79vRW/3rrfFnjPpd4K2Ipvs=
   distributions: sdist bdist_wheel
   on:
     tags: true

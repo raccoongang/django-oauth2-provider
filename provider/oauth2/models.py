@@ -40,14 +40,14 @@ class Client(models.Model):
         # See https://code.djangoproject.com/ticket/23348
         app_label = "oauth2"
 
-    user = models.ForeignKey(AUTH_USER_MODEL, related_name='oauth2_client',
-                             blank=True, null=True)
+    user = models.ForeignKey(AUTH_USER_MODEL, related_name='oauth2_client', blank=True, null=True)
     name = models.CharField(max_length=255, blank=True)
     url = models.URLField(help_text="Your application's URL.")
     redirect_uri = models.URLField(help_text="Your application's callback URL")
     client_id = models.CharField(max_length=255, default=short_token)
     client_secret = models.CharField(max_length=255, default=long_token)
     client_type = models.IntegerField(choices=CLIENT_TYPES)
+    logout_uri = models.URLField(help_text="Your application's logout URL", null=True, blank=True)
 
     def __unicode__(self):
         return self.redirect_uri
@@ -63,7 +63,8 @@ class Client(models.Model):
                     redirect_uri=self.redirect_uri,
                     client_id=self.client_id,
                     client_secret=self.client_secret,
-                    client_type=self.client_type)
+                    client_type=self.client_type,
+                    logout_uri=self.logout_uri)
 
     @classmethod
     def deserialize(cls, data):
@@ -105,10 +106,12 @@ class Grant(models.Model):
 
     class Meta:
         app_label = "oauth2"
+        index_together = ["client", "code", "expires"]
 
-    user = models.ForeignKey(AUTH_USER_MODEL)
+    user = models.ForeignKey(AUTH_USER_MODEL, related_name='dop_grant')
     client = models.ForeignKey(Client)
     code = models.CharField(max_length=255, default=long_token)
+    nonce = models.CharField(max_length=255, blank=True, default='')
     expires = models.DateTimeField(default=get_code_expiry)
     redirect_uri = models.CharField(max_length=255, blank=True)
     scope = models.IntegerField(default=0)
@@ -141,7 +144,7 @@ class AccessToken(models.Model):
     class Meta:
         app_label = "oauth2"
 
-    user = models.ForeignKey(AUTH_USER_MODEL)
+    user = models.ForeignKey(AUTH_USER_MODEL, related_name='dop_access_token')
     token = models.CharField(max_length=255, default=long_token, db_index=True)
     client = models.ForeignKey(Client)
     expires = models.DateTimeField()
@@ -195,7 +198,7 @@ class RefreshToken(models.Model):
     class Meta:
         app_label = "oauth2"
 
-    user = models.ForeignKey(AUTH_USER_MODEL)
+    user = models.ForeignKey(AUTH_USER_MODEL, related_name='dop_refresh_token')
     token = models.CharField(max_length=255, default=long_token)
     access_token = models.OneToOneField(AccessToken,
                                         related_name='refresh_token')
