@@ -34,7 +34,7 @@ class Client(models.Model):
 
     Clients are outlined in the :rfc:`2` and its subsections.
     """
-    REDIRECT_URI_SPLIT_RE = re.compile(',|\n|\s')
+    REDIRECT_URI_SPLIT_RE = re.compile(',+|\n+|\s+')
 
     class Meta:
         # In Django 1.7, this is required so that Django recognizes
@@ -56,7 +56,7 @@ class Client(models.Model):
 
     @property
     def redirect_uris(self):
-        return self.REDIRECT_URI_SPLIT_RE.split(self.redirect_uri)
+        return filter(bool, self.REDIRECT_URI_SPLIT_RE.split(self.redirect_uri))
 
     def get_default_token_expiry(self):
         public = (self.client_type == 1)
